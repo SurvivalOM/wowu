@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#ff6b6b">
+<title>Wow U — Reach out. Stay close.</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  :root{
+    --coral:#ff6b6b; --coral-deep:#ff5470; --purple:#7b5cff; --ink:#231a2e;
+    --bg:#fff7f4; --card:#ffffff; --muted:#8a8095; --line:#f0e6ee;
+    --me:#ffe3dd; --them:#efeaff; --ok:#2ecc71;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); overflow:hidden;
+  }
+  #app{height:100dvh; max-width:520px; margin:0 auto; position:relative; background:var(--bg);
+    display:flex; flex-direction:column; overflow:hidden}
+  .screen{position:absolute; inset:0; display:none; flex-direction:column; animation:fade .2s ease}
+  .screen.active{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* ---------- Login ---------- */
+  #loginScreen{justify-content:center; padding:28px;
+    background:linear-gradient(160deg,var(--coral),var(--purple))}
+  .logo{font-size:46px; font-weight:800; color:#fff; letter-spacing:-1px; text-align:center}
+  .logo span{display:inline-block; background:#fff; color:var(--coral-deep); padding:0 12px;
+    border-radius:16px; transform:rotate(-3deg); margin-left:6px}
+  .tag{color:#fff; opacity:.95; text-align:center; margin:10px 0 30px; font-size:16px}
+  .loginCard{background:#fff; border-radius:24px; padding:22px; box-shadow:0 20px 50px rgba(70,30,90,.25)}
+  .loginCard h2{margin:2px 0 4px; font-size:20px}
+  .loginCard p.hint{margin:0 0 16px; color:var(--muted); font-size:13px}
+  label{display:block; font-size:12px; font-weight:600; color:var(--muted); margin:12px 0 6px; text-transform:uppercase; letter-spacing:.04em}
+  input,select{width:100%; padding:14px 16px; border:1.5px solid var(--line); border-radius:14px;
+    font-size:17px; background:#fffafa; outline:none; transition:border .15s}
+  input:focus,select:focus{border-color:var(--coral)}
+  .row{display:flex; gap:10px}
+  .row .cc{flex:0 0 96px}
+  .row .num{flex:1}
+  .btn{width:100%; padding:15px; border:none; border-radius:14px; font-size:17px; font-weight:700;
+    color:#fff; background:linear-gradient(135deg,var(--coral-deep),var(--purple)); margin-top:20px;
+    cursor:pointer; box-shadow:0 10px 24px rgba(123,92,255,.3)}
+  .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:none; color:var(--purple); box-shadow:none; font-weight:600; margin-top:8px}
+
+  /* ---------- Header ---------- */
+  .hdr{display:flex; align-items:center; gap:12px; padding:14px 16px;
+    background:linear-gradient(135deg,var(--coral-deep),var(--purple)); color:#fff;
+    padding-top:max(14px,env(safe-area-inset-top))}
+  .hdr .title{font-weight:800; font-size:20px}
+  .hdr .sub{font-size:12px; opacity:.9; margin-top:1px}
+  .hdr .spacer{flex:1}
+  .iconbtn{background:rgba(255,255,255,.18); border:none; color:#fff; width:40px; height:40px;
+    border-radius:50%; font-size:20px; cursor:pointer; display:grid; place-items:center}
+  .avatar{width:42px; height:42px; border-radius:50%; background:#fff; color:var(--coral-deep);
+    display:grid; place-items:center; font-weight:800; font-size:18px; flex:0 0 42px}
+
+  /* ---------- Home ---------- */
+  #homeScreen .body{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch}
+  .chatItem{display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:pointer; border-bottom:1px solid var(--line)}
+  .chatItem:active{background:#fdf1ef}
+  .chatItem .meta{flex:1; min-width:0}
+  .chatItem .name{font-weight:700; font-size:16px}
+  .chatItem .last{color:var(--muted); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px}
+  .chatItem .time{font-size:11px; color:var(--muted)}
+  .empty{padding:50px 30px; text-align:center; color:var(--muted)}
+  .empty .big{font-size:54px; margin-bottom:10px}
+  .fab{position:absolute; right:18px; bottom:24px; width:60px; height:60px; border-radius:50%;
+    background:linear-gradient(135deg,var(--coral-deep),var(--purple)); color:#fff; border:none;
+    font-size:28px; box-shadow:0 12px 28px rgba(123,92,255,.4); cursor:pointer; display:grid; place-items:center}
+
+  /* ---------- Chat ---------- */
+  #chatScreen .body{flex:1; overflow-y:auto; padding:14px 12px; display:flex; flex-direction:column; gap:8px;
+    background:linear-gradient(180deg,#fff7f4,#f7f1ff)}
+  .bubble{max-width:78%; padding:10px 14px; border-radius:18px; font-size:15.5px; line-height:1.35; word-wrap:break-word; position:relative}
+  .bubble .t{display:block; font-size:10px; color:var(--muted); margin-top:4px; text-align:right}
+  .bubble.them{align-self:flex-start; background:var(--them); border-bottom-left-radius:5px}
+  .bubble.me{align-self:flex-end; background:var(--me); border-bottom-right-radius:5px}
+  .composer{display:flex; gap:8px; padding:10px; padding-bottom:max(10px,env(safe-area-inset-bottom)); background:#fff; border-top:1px solid var(--line)}
+  .composer input{border-radius:24px}
+  .sendbtn{flex:0 0 50px; width:50px; height:50px; border-radius:50%; border:none; color:#fff;
+    background:linear-gradient(135deg,var(--coral-deep),var(--purple)); font-size:20px; cursor:pointer}
+
+  /* ---------- Sheet (new chat) ---------- */
+  .sheetWrap{position:absolute; inset:0; background:rgba(35,26,46,.45); display:none; align-items:flex-end; z-index:20}
+  .sheetWrap.active{display:flex; animation:fade .15s}
+  .sheet{background:#fff; width:100%; border-radius:24px 24px 0 0; padding:22px 20px 28px}
+  .sheet h3{margin:0 0 4px}
+  .sheet p{margin:0 0 14px; color:var(--muted); font-size:13px}
+
+  .banner{background:#fff3cd; color:#7a5c00; font-size:12px; padding:8px 14px; text-align:center; border-bottom:1px solid #f0e3b0}
+  .banner.live{background:#e9fbef; color:#1c7c43; border-color:#bdeccb}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOGIN -->
+  <section id="loginScreen" class="screen active">
+    <div class="logo">Wow <span>U</span></div>
+    <div class="tag">Reach out. Stay close.</div>
+    <div class="loginCard">
+      <h2>Welcome 👋</h2>
+      <p class="hint">Sign in with your name and mobile number to start connecting.</p>
+      <label>Your name</label>
+      <input id="inName" placeholder="e.g. Omjai" autocomplete="name">
+      <label>Mobile number</label>
+      <div class="row">
+        <input id="inCC" class="cc" value="+91" inputmode="tel">
+        <input id="inPhone" class="num" placeholder="98765 43210" inputmode="numeric" autocomplete="tel">
+      </div>
+      <button class="btn" id="btnLogin">Enter Wow U</button>
+    </div>
+  </section>
+
+  <!-- HOME -->
+  <section id="homeScreen" class="screen">
+    <div class="hdr">
+      <div class="avatar" id="meAvatar">U</div>
+      <div>
+        <div class="title">Wow U</div>
+        <div class="sub" id="meSub">your circle</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="iconbtn" id="btnLogout" title="Sign out">⎋</button>
+    </div>
+    <div class="banner" id="modeBanner">connecting…</div>
+    <div class="body" id="chatList"></div>
+    <button class="fab" id="fabNew">＋</button>
+  </section>
+
+  <!-- CHAT -->
+  <section id="chatScreen" class="screen">
+    <div class="hdr">
+      <button class="iconbtn" id="btnBack">‹</button>
+      <div class="avatar" id="peerAvatar">?</div>
+      <div>
+        <div class="title" id="peerName" style="font-size:17px">—</div>
+        <div class="sub" id="peerSub">—</div>
+      </div>
+    </div>
+    <div class="body" id="messages"></div>
+    <form class="composer" id="composer">
+      <input id="msgInput" placeholder="Write something kind…" autocomplete="off">
+      <button class="sendbtn" type="submit">➤</button>
+    </form>
+  </section>
+
+  <!-- NEW CHAT SHEET -->
+  <div class="sheetWrap" id="newSheet">
+    <div class="sheet">
+      <h3>Start a conversation</h3>
+      <p>Enter the mobile number of the person you want to reach.</p>
+      <label>Their mobile number</label>
+      <div class="row">
+        <input id="newCC" class="cc" value="+91" inputmode="tel">
+        <input id="newPhone" class="num" placeholder="98765 43210" inputmode="numeric">
+      </div>
+      <label>Their name (optional)</label>
+      <input id="newName" placeholder="e.g. Amma">
+      <button class="btn" id="btnStartChat">Open chat</button>
+      <button class="btn ghost" id="btnCancelNew">Cancel</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase (loaded only if configured) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+/* =========================================================================
+   WOW U — prototype
+   -------------------------------------------------------------------------
+   STEP 1 of going live: paste your Firebase config below (between the {}).
+   Until you do, the app runs in LOCAL DEMO mode (two tabs on the SAME
+   browser can message each other) so you can see how it feels.
+   With a real config, ANY two phones can message over the internet.
+   ========================================================================= */
+const FIREBASE_CONFIG = {
+  databaseURL: "https://wow-u-5083c-default-rtdb.firebaseio.com",
+  projectId: "wow-u-5083c"
+  // apiKey / authDomain / appId — add later when we enable phone-number OTP login
+};
+/* ========================================================================= */
+
+const $ = s => document.querySelector(s);
+const screens = { login:$('#loginScreen'), home:$('#homeScreen'), chat:$('#chatScreen') };
+function show(name){ Object.values(screens).forEach(s=>s.classList.remove('active')); screens[name].classList.add('active'); }
+function digits(s){ return (s||'').replace(/\D/g,''); }
+function keyOf(cc, phone){ return digits(cc)+digits(phone); }       // e.g. 919876543210
+function chatIdOf(a,b){ return [a,b].sort().join('__'); }
+function initials(s){ s=(s||'?').trim(); const p=s.split(/\s+/); return ((p[0]?.[0]||'')+(p[1]?.[0]||'')).toUpperCase()||s[0]?.toUpperCase()||'?'; }
+function fmtTime(ts){ const d=new Date(ts); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function esc(s){ return (s||'').replace(/[<>&]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+
+let ME = null;                 // {key, name, cc, phone}
+let activePeer = null;         // {key, name}
+let unsubMessages = null;
+let unsubChats = null;
+
+/* ---------------- Backend abstraction (Firebase OR local demo) ---------- */
+const isConfigured = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.databaseURL);
+let backend;
+
+function makeFirebaseBackend(){
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.database();
+  return {
+    mode:'live',
+    upsertUser(u){ db.ref('users/'+u.key).update({name:u.name, cc:u.cc, phone:u.phone, lastSeen:Date.now()}); },
+    sendMessage(chatId, msg){ db.ref('chats/'+chatId+'/messages').push(msg); },
+    listenMessages(chatId, onMsg){
+      const ref = db.ref('chats/'+chatId+'/messages').limitToLast(200);
+      const h = ref.on('child_added', s=>onMsg(s.val()));
+      return ()=>ref.off('child_added', h);
+    },
+    listenChats(meKey, onList){
+      const ref = db.ref('userChats/'+meKey);
+      const h = ref.on('value', s=>onList(s.val()||{}));
+      return ()=>ref.off('value', h);
+    },
+    indexChat(meKey, peerKey, entry){ db.ref('userChats/'+meKey+'/'+peerKey).set(entry); }
+  };
+}
+
+function makeLocalBackend(){
+  // Demo only: works across tabs of the same browser via localStorage + BroadcastChannel.
+  const bc = ('BroadcastChannel' in window) ? new BroadcastChannel('wowu') : null;
+  const listeners = { msg:{}, chats:[] };
+  const read = k => JSON.parse(localStorage.getItem(k)||'null');
+  const write = (k,v)=>localStorage.setItem(k, JSON.stringify(v));
+  function emitMsg(chatId, msg){ (listeners.msg[chatId]||[]).forEach(cb=>cb(msg)); }
+  function emitChats(){ listeners.chats.forEach(cb=>cb(read('wowu_chats_'+ME.key)||{})); }
+  window.addEventListener('storage', e=>{ if(e.key && e.key.startsWith('wowu_msg_')) {/*cross-tab*/} });
+  if(bc) bc.onmessage = e=>{
+    if(e.data.type==='msg') emitMsg(e.data.chatId, e.data.msg);
+    if(e.data.type==='chats') emitChats();
+  };
+  return {
+    mode:'demo',
+    upsertUser(u){ const us=read('wowu_users')||{}; us[u.key]={name:u.name,cc:u.cc,phone:u.phone}; write('wowu_users',us); },
+    sendMessage(chatId, msg){
+      const k='wowu_msg_'+chatId; const arr=read(k)||[]; arr.push(msg); write(k,arr);
+      emitMsg(chatId,msg); if(bc) bc.postMessage({type:'msg',chatId,msg});
+    },
+    listenMessages(chatId, onMsg){
+      (read('wowu_msg_'+chatId)||[]).forEach(onMsg);
+      (listeners.msg[chatId]=listeners.msg[chatId]||[]).push(onMsg);
+      return ()=>{ listeners.msg[chatId]=(listeners.msg[chatId]||[]).filter(f=>f!==onMsg); };
+    },
+    listenChats(meKey, onList){
+      onList(read('wowu_chats_'+meKey)||{});
+      listeners.chats.push(onList);
+      return ()=>{ listeners.chats=listeners.chats.filter(f=>f!==onList); };
+    },
+    indexChat(meKey, peerKey, entry){
+      const k='wowu_chats_'+meKey; const m=read(k)||{}; m[peerKey]=entry; write(k,m);
+      if(meKey===ME.key) emitChats(); if(bc) bc.postMessage({type:'chats'});
+    }
+  };
+}
+
+/* ---------------- App logic ---------------- */
+function boot(){
+  backend = isConfigured ? makeFirebaseBackend() : makeLocalBackend();
+  const saved = JSON.parse(localStorage.getItem('wowu_me')||'null');
+  if(saved){ ME = saved; enterApp(); } else { show('login'); }
+  setupBanner();
+}
+
+function setupBanner(){
+  const b = $('#modeBanner');
+  if(backend.mode==='live'){ b.className='banner live'; b.textContent='● Live — message anyone, anywhere'; }
+  else { b.className='banner'; b.textContent='Demo mode — open a 2nd tab to test. Add Firebase to go live across phones.'; }
+}
+
+$('#btnLogin').onclick = ()=>{
+  const name=$('#inName').value.trim(); const cc=$('#inCC').value.trim(); const phone=$('#inPhone').value.trim();
+  if(!name){ alert('Please enter your name'); return; }
+  if(digits(phone).length<6){ alert('Please enter a valid mobile number'); return; }
+  ME = { key:keyOf(cc,phone), name, cc, phone };
+  localStorage.setItem('wowu_me', JSON.stringify(ME));
+  enterApp();
+};
+
+function enterApp(){
+  backend.upsertUser(ME);
+  $('#meAvatar').textContent = initials(ME.name);
+  $('#meSub').textContent = ME.cc+' '+ME.phone;
+  show('home');
+  if(unsubChats) unsubChats();
+  unsubChats = backend.listenChats(ME.key, renderChatList);
+}
+
+function renderChatList(map){
+  const list = $('#chatList');
+  const entries = Object.entries(map||{}).sort((a,b)=>(b[1].lastTs||0)-(a[1].lastTs||0));
+  if(!entries.length){
+    list.innerHTML = `<div class="empty"><div class="big">🤝</div>
+      <div style="font-weight:700;color:var(--ink)">No conversations yet</div>
+      <div style="margin-top:6px">Tap ＋ to reach out to someone.</div></div>`;
+    return;
+  }
+  list.innerHTML = entries.map(([peerKey,e])=>`
+    <div class="chatItem" data-key="${peerKey}" data-name="${esc(e.name||peerKey)}">
+      <div class="avatar" style="background:#efeaff;color:var(--purple)">${initials(e.name||peerKey)}</div>
+      <div class="meta">
+        <div class="name">${esc(e.name||('+'+peerKey))}</div>
+        <div class="last">${esc(e.lastText||'Say hello 👋')}</div>
+      </div>
+      <div class="time">${e.lastTs?fmtTime(e.lastTs):''}</div>
+    </div>`).join('');
+  list.querySelectorAll('.chatItem').forEach(el=>{
+    el.onclick = ()=>openChat({ key:el.dataset.key, name:el.dataset.name });
+  });
+}
+
+function openChat(peer){
+  activePeer = peer;
+  $('#peerName').textContent = peer.name && peer.name!==peer.key ? peer.name : ('+'+peer.key);
+  $('#peerSub').textContent = '+'+peer.key;
+  $('#peerAvatar').textContent = initials(peer.name||peer.key);
+  $('#messages').innerHTML = '';
+  show('chat');
+  const chatId = chatIdOf(ME.key, peer.key);
+  if(unsubMessages) unsubMessages();
+  unsubMessages = backend.listenMessages(chatId, addBubble);
+  setTimeout(()=>$('#msgInput').focus(), 100);
+}
+
+function addBubble(msg){
+  const mine = msg.from===ME.key;
+  const div = document.createElement('div');
+  div.className = 'bubble '+(mine?'me':'them');
+  div.innerHTML = esc(msg.text)+`<span class="t">${fmtTime(msg.ts)}</span>`;
+  $('#messages').appendChild(div);
+  $('#messages').scrollTop = $('#messages').scrollHeight;
+}
+
+$('#composer').onsubmit = e=>{
+  e.preventDefault();
+  const text = $('#msgInput').value.trim();
+  if(!text || !activePeer) return;
+  const chatId = chatIdOf(ME.key, activePeer.key);
+  const msg = { from:ME.key, fromName:ME.name, text, ts:Date.now() };
+  backend.sendMessage(chatId, msg);
+  // keep both sides' conversation lists fresh
+  backend.indexChat(ME.key, activePeer.key, { name:activePeer.name||activePeer.key, lastText:text, lastTs:msg.ts });
+  backend.indexChat(activePeer.key, ME.key, { name:ME.name, lastText:text, lastTs:msg.ts });
+  $('#msgInput').value=''; $('#msgInput').focus();
+};
+
+$('#btnBack').onclick = ()=>{ if(unsubMessages) unsubMessages(); activePeer=null; show('home'); };
+
+/* New chat sheet */
+$('#fabNew').onclick = ()=>$('#newSheet').classList.add('active');
+$('#btnCancelNew').onclick = ()=>$('#newSheet').classList.remove('active');
+$('#newSheet').onclick = e=>{ if(e.target.id==='newSheet') $('#newSheet').classList.remove('active'); };
+$('#btnStartChat').onclick = ()=>{
+  const cc=$('#newCC').value, phone=$('#newPhone').value, name=$('#newName').value.trim();
+  if(digits(phone).length<6){ alert('Enter a valid number'); return; }
+  const key = keyOf(cc, phone);
+  if(key===ME.key){ alert("That's your own number 🙂"); return; }
+  $('#newSheet').classList.remove('active'); $('#newPhone').value=''; $('#newName').value='';
+  // pre-create the conversation on my side so it shows in the list
+  backend.indexChat(ME.key, key, { name:name||key, lastText:'', lastTs:Date.now() });
+  openChat({ key, name:name||key });
+};
+
+$('#btnLogout').onclick = ()=>{
+  if(!confirm('Sign out of Wow U?')) return;
+  localStorage.removeItem('wowu_me'); location.reload();
+};
+
+/* PWA service worker (optional, ignored if file missing) */
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+
+boot();
+</script>
+</body>
+</html>
