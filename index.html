@@ -94,6 +94,24 @@
 
   .banner{background:#fff3cd; color:#7a5c00; font-size:12px; padding:8px 14px; text-align:center; border-bottom:1px solid #f0e3b0}
   .banner.live{background:#e9fbef; color:#1c7c43; border-color:#bdeccb}
+
+  /* unread dot */
+  .unread{width:11px; height:11px; border-radius:50%; background:var(--coral-deep); margin:4px 0 0 auto}
+
+  /* invite bar */
+  .invitebar{display:flex; flex-direction:column; gap:8px; padding:12px 14px; background:#fff7e6; border-bottom:1px solid #f0e3b0}
+  .invtext{font-size:13px; color:#7a5c00; line-height:1.4}
+  .invactions{display:flex; gap:8px}
+  .invbtn{flex:1; padding:10px; border:none; border-radius:10px; font-size:13px; font-weight:700; color:#fff; background:var(--purple); cursor:pointer}
+  .invbtn.wa{background:#25d366; flex:2}
+  .btn.pick{background:#efeaff; color:var(--purple); box-shadow:none; margin-top:0; margin-bottom:4px}
+
+  /* toast */
+  .toast{position:absolute; left:50%; top:64px; transform:translateX(-50%) translateY(-12px);
+    background:var(--ink); color:#fff; font-size:13.5px; padding:11px 16px; border-radius:14px; max-width:88%;
+    box-shadow:0 10px 28px rgba(0,0,0,.3); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:40;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
@@ -143,6 +161,13 @@
         <div class="sub" id="peerSub">—</div>
       </div>
     </div>
+    <div class="invitebar" id="inviteBar" style="display:none">
+      <span id="inviteText" class="invtext">Not on Wow U yet.</span>
+      <div class="invactions">
+        <button class="invbtn wa" id="btnInviteWA">Invite via WhatsApp</button>
+        <button class="invbtn" id="btnInviteSMS">SMS</button>
+      </div>
+    </div>
     <div class="body" id="messages"></div>
     <form class="composer" id="composer">
       <input id="msgInput" placeholder="Write something kind…" autocomplete="off">
@@ -150,11 +175,14 @@
     </form>
   </section>
 
+  <div id="toast" class="toast"></div>
+
   <!-- NEW CHAT SHEET -->
   <div class="sheetWrap" id="newSheet">
     <div class="sheet">
       <h3>Start a conversation</h3>
-      <p>Enter the mobile number of the person you want to reach.</p>
+      <p>Pick from your contacts, or type the mobile number of the person you want to reach.</p>
+      <button class="btn pick" id="btnPickContact" style="display:none">📇 Pick from my contacts</button>
       <label>Their mobile number</label>
       <div class="row">
         <input id="newCC" class="cc" value="+91" inputmode="tel">
@@ -193,7 +221,15 @@ const $ = s => document.querySelector(s);
 const screens = { login:$('#loginScreen'), home:$('#homeScreen'), chat:$('#chatScreen') };
 function show(name){ Object.values(screens).forEach(s=>s.classList.remove('active')); screens[name].classList.add('active'); }
 function digits(s){ return (s||'').replace(/\D/g,''); }
-function keyOf(cc, phone){ return digits(cc)+digits(phone); }       // e.g. 919876543210
+// Normalize any way a number was typed into ONE canonical id: countrycode + 10-digit national.
+// Handles +91 typed in the box, a leading 0, or the country code repeated inside the number.
+function keyOf(cc, phone){
+  let c = digits(cc) || '91';
+  let p = digits(phone).replace(/^0+/, '');
+  if (c && p.indexOf(c) === 0 && p.length > 10) p = p.slice(c.length); // strip duplicated country code
+  return c + p;                                                        // e.g. 919876543210
+}
+function plusNum(key){ return '+' + key; }                            // key -> +91...
 function chatIdOf(a,b){ return [a,b].sort().join('__'); }
 function initials(s){ s=(s||'?').trim(); const p=s.split(/\s+/); return ((p[0]?.[0]||'')+(p[1]?.[0]||'')).toUpperCase()||s[0]?.toUpperCase()||'?'; }
 function fmtTime(ts){ const d=new Date(ts); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
@@ -225,7 +261,8 @@ function makeFirebaseBackend(){
       const h = ref.on('value', s=>onList(s.val()||{}));
       return ()=>ref.off('value', h);
     },
-    indexChat(meKey, peerKey, entry){ db.ref('userChats/'+meKey+'/'+peerKey).set(entry); }
+    indexChat(meKey, peerKey, entry){ db.ref('userChats/'+meKey+'/'+peerKey).set(entry); },
+    isRegistered(key){ return db.ref('users/'+key).once('value').then(s=>s.exists()); }
   };
 }
 
@@ -262,15 +299,57 @@ function makeLocalBackend(){
     indexChat(meKey, peerKey, entry){
       const k='wowu_chats_'+meKey; const m=read(k)||{}; m[peerKey]=entry; write(k,m);
       if(meKey===ME.key) emitChats(); if(bc) bc.postMessage({type:'chats'});
-    }
+    },
+    isRegistered(key){ const us=read('wowu_users')||{}; return Promise.resolve(!!us[key]); }
   };
+}
+
+/* ---------------- Alerts: sound + browser notification + toast --------- */
+let seenTs = {};        // last lastTs we've processed per peer (for incoming detection)
+let readTs = {};        // last time I opened each chat (for unread dots)
+let firstChatLoad = true;
+let audioCtx = null;
+
+function beep(){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type='sine'; o.frequency.value=880;
+    g.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime+0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.35);
+    o.start(); o.stop(audioCtx.currentTime+0.36);
+  }catch(e){}
+}
+function askNotifyPermission(){
+  try{ if('Notification' in window && Notification.permission==='default'){ Notification.requestPermission(); } }catch(e){}
+}
+function showToast(text){
+  const t=$('#toast'); t.textContent=text; t.classList.add('show');
+  clearTimeout(showToast._t); showToast._t=setTimeout(()=>t.classList.remove('show'), 3500);
+}
+function alertIncoming(name, text){
+  beep();
+  showToast('💬 '+name+': '+text);
+  try{
+    if('Notification' in window && Notification.permission==='granted'){
+      const n=new Notification('New message from '+name, { body:text, tag:'wowu', icon:'icon-192.png' });
+      n.onclick=()=>{ window.focus(); n.close(); };
+    }
+  }catch(e){}
+  if(navigator.vibrate){ try{ navigator.vibrate(180); }catch(e){} }
 }
 
 /* ---------------- App logic ---------------- */
 function boot(){
   backend = isConfigured ? makeFirebaseBackend() : makeLocalBackend();
   const saved = JSON.parse(localStorage.getItem('wowu_me')||'null');
-  if(saved){ ME = saved; enterApp(); } else { show('login'); }
+  if(saved){
+    saved.key = keyOf(saved.cc, saved.phone);   // re-normalize old logins so IDs always match
+    ME = saved; localStorage.setItem('wowu_me', JSON.stringify(ME));
+    enterApp();
+  } else { show('login'); }
   setupBanner();
 }
 
@@ -286,6 +365,8 @@ $('#btnLogin').onclick = ()=>{
   if(digits(phone).length<6){ alert('Please enter a valid mobile number'); return; }
   ME = { key:keyOf(cc,phone), name, cc, phone };
   localStorage.setItem('wowu_me', JSON.stringify(ME));
+  askNotifyPermission();                       // ask for alert permission on this tap (a user gesture)
+  try{ audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)(); audioCtx.resume(); }catch(e){} // unlock audio silently
   enterApp();
 };
 
@@ -299,23 +380,42 @@ function enterApp(){
 }
 
 function renderChatList(map){
+  map = map || {};
+  // Detect NEW incoming messages and alert (skip the very first load = existing history)
+  Object.entries(map).forEach(([peerKey,e])=>{
+    const prev = seenTs[peerKey] || 0;
+    if((e.lastTs||0) > prev){
+      const incoming = e.lastFrom && e.lastFrom !== ME.key;
+      const viewingThis = activePeer && activePeer.key === peerKey && !document.hidden;
+      if(!firstChatLoad && incoming && !viewingThis){ alertIncoming(e.name || plusNum(peerKey), e.lastText||''); }
+      seenTs[peerKey] = e.lastTs || 0;
+    }
+  });
+  firstChatLoad = false;
+
   const list = $('#chatList');
-  const entries = Object.entries(map||{}).sort((a,b)=>(b[1].lastTs||0)-(a[1].lastTs||0));
+  const entries = Object.entries(map).sort((a,b)=>(b[1].lastTs||0)-(a[1].lastTs||0));
   if(!entries.length){
     list.innerHTML = `<div class="empty"><div class="big">🤝</div>
       <div style="font-weight:700;color:var(--ink)">No conversations yet</div>
       <div style="margin-top:6px">Tap ＋ to reach out to someone.</div></div>`;
     return;
   }
-  list.innerHTML = entries.map(([peerKey,e])=>`
+  list.innerHTML = entries.map(([peerKey,e])=>{
+    const unread = (e.lastTs||0) > (readTs[peerKey]||0) && e.lastFrom && e.lastFrom!==ME.key;
+    return `
     <div class="chatItem" data-key="${peerKey}" data-name="${esc(e.name||peerKey)}">
       <div class="avatar" style="background:#efeaff;color:var(--purple)">${initials(e.name||peerKey)}</div>
       <div class="meta">
-        <div class="name">${esc(e.name||('+'+peerKey))}</div>
+        <div class="name">${esc(e.name||plusNum(peerKey))}</div>
         <div class="last">${esc(e.lastText||'Say hello 👋')}</div>
       </div>
-      <div class="time">${e.lastTs?fmtTime(e.lastTs):''}</div>
-    </div>`).join('');
+      <div style="text-align:right">
+        <div class="time">${e.lastTs?fmtTime(e.lastTs):''}</div>
+        ${unread?'<div class="unread"></div>':''}
+      </div>
+    </div>`;
+  }).join('');
   list.querySelectorAll('.chatItem').forEach(el=>{
     el.onclick = ()=>openChat({ key:el.dataset.key, name:el.dataset.name });
   });
@@ -323,19 +423,40 @@ function renderChatList(map){
 
 function openChat(peer){
   activePeer = peer;
-  $('#peerName').textContent = peer.name && peer.name!==peer.key ? peer.name : ('+'+peer.key);
-  $('#peerSub').textContent = '+'+peer.key;
+  readTs[peer.key] = Date.now();                 // opening = mark read
+  $('#peerName').textContent = peer.name && peer.name!==peer.key ? peer.name : plusNum(peer.key);
+  $('#peerSub').textContent = plusNum(peer.key);
   $('#peerAvatar').textContent = initials(peer.name||peer.key);
   $('#messages').innerHTML = '';
+  $('#inviteBar').style.display = 'none';
   show('chat');
   const chatId = chatIdOf(ME.key, peer.key);
   if(unsubMessages) unsubMessages();
   unsubMessages = backend.listenMessages(chatId, addBubble);
+  // Is this person on Wow U yet? If not, offer to invite them.
+  backend.isRegistered(peer.key).then(reg=>{
+    if(!reg && activePeer && activePeer.key===peer.key) showInviteBar(peer);
+  }).catch(()=>{});
   setTimeout(()=>$('#msgInput').focus(), 100);
+}
+
+function showInviteBar(peer){
+  const niceName = (peer.name && peer.name!==peer.key) ? peer.name : 'They';
+  $('#inviteText').textContent = niceName + " isn't on Wow U yet — your message is saved and waiting. Invite them to read it:";
+  $('#inviteBar').dataset.num = peer.key;
+  $('#inviteBar').dataset.name = niceName;
+  $('#inviteBar').style.display = 'flex';
+}
+
+function inviteLink(){ return 'https://survivalom.github.io/wowu/'; }
+function inviteMessage(){
+  return "Hi! I just sent you a message on Wow U 💛  Install & open " + inviteLink() +
+         " and sign in with this mobile number to read it.";
 }
 
 function addBubble(msg){
   const mine = msg.from===ME.key;
+  if(!mine && activePeer){ readTs[activePeer.key] = Date.now(); }   // reading it now
   const div = document.createElement('div');
   div.className = 'bubble '+(mine?'me':'them');
   div.innerHTML = esc(msg.text)+`<span class="t">${fmtTime(msg.ts)}</span>`;
@@ -350,9 +471,10 @@ $('#composer').onsubmit = e=>{
   const chatId = chatIdOf(ME.key, activePeer.key);
   const msg = { from:ME.key, fromName:ME.name, text, ts:Date.now() };
   backend.sendMessage(chatId, msg);
-  // keep both sides' conversation lists fresh
-  backend.indexChat(ME.key, activePeer.key, { name:activePeer.name||activePeer.key, lastText:text, lastTs:msg.ts });
-  backend.indexChat(activePeer.key, ME.key, { name:ME.name, lastText:text, lastTs:msg.ts });
+  // keep both sides' conversation lists fresh (lastFrom lets the other phone know it's incoming)
+  backend.indexChat(ME.key, activePeer.key, { name:activePeer.name||activePeer.key, lastText:text, lastTs:msg.ts, lastFrom:ME.key });
+  backend.indexChat(activePeer.key, ME.key, { name:ME.name, lastText:text, lastTs:msg.ts, lastFrom:ME.key });
+  readTs[activePeer.key] = msg.ts; seenTs[activePeer.key] = msg.ts;
   $('#msgInput').value=''; $('#msgInput').focus();
 };
 
@@ -369,8 +491,35 @@ $('#btnStartChat').onclick = ()=>{
   if(key===ME.key){ alert("That's your own number 🙂"); return; }
   $('#newSheet').classList.remove('active'); $('#newPhone').value=''; $('#newName').value='';
   // pre-create the conversation on my side so it shows in the list
-  backend.indexChat(ME.key, key, { name:name||key, lastText:'', lastTs:Date.now() });
+  backend.indexChat(ME.key, key, { name:name||key, lastText:'', lastTs:Date.now(), lastFrom:ME.key });
   openChat({ key, name:name||key });
+};
+
+/* Invite a non-user: their message is already saved; nudge them to install.
+   We use the SENDER's own WhatsApp / SMS app (free, no server) — they tap send. */
+$('#btnInviteWA').onclick = ()=>{
+  const num = $('#inviteBar').dataset.num;
+  window.open('https://wa.me/'+num+'?text='+encodeURIComponent(inviteMessage()), '_blank');
+};
+$('#btnInviteSMS').onclick = ()=>{
+  const num = $('#inviteBar').dataset.num;
+  window.location.href = 'sms:+'+num+'?body='+encodeURIComponent(inviteMessage());
+};
+
+/* Pick from the phone's own contact list (Android Chrome over HTTPS). */
+const supportsContacts = ('contacts' in navigator) && navigator.contacts && ('select' in navigator.contacts) && window.isSecureContext;
+if(supportsContacts){ $('#btnPickContact').style.display='block'; }
+$('#btnPickContact').onclick = async ()=>{
+  try{
+    const sel = await navigator.contacts.select(['name','tel'], {multiple:false});
+    if(sel && sel[0]){
+      const c=sel[0];
+      const tel = (c.tel && c.tel[0]) ? c.tel[0] : '';
+      const nm  = (c.name && c.name[0]) ? c.name[0] : '';
+      $('#newPhone').value = tel;
+      if(nm) $('#newName').value = nm;
+    }
+  }catch(e){ /* cancelled / unsupported */ }
 };
 
 $('#btnLogout').onclick = ()=>{
