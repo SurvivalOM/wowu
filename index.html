@@ -106,6 +106,11 @@
   .invbtn.wa{background:#25d366; flex:2}
   .btn.pick{background:#efeaff; color:var(--purple); box-shadow:none; margin-top:0; margin-bottom:4px}
 
+  /* install bar */
+  .installBar{display:flex; align-items:center; gap:10px; padding:11px 14px; background:#eafaf3; border-bottom:1px solid #c7ecdb}
+  .installBar #installText{flex:1; font-size:13px; color:#11724e; font-weight:600; line-height:1.35}
+  .installBtn{flex:0 0 auto; padding:9px 18px; border:none; border-radius:10px; font-size:14px; font-weight:700; color:#fff; background:#1aa86f; cursor:pointer}
+
   /* update pill */
   .updatePill{position:absolute; top:0; left:0; right:0; z-index:60; cursor:pointer;
     background:linear-gradient(135deg,var(--coral-deep),var(--purple)); color:#fff; text-align:center;
@@ -140,6 +145,7 @@
         <input id="inPhone" class="num" placeholder="98765 43210" inputmode="numeric" autocomplete="tel">
       </div>
       <button class="btn" id="btnLogin">Enter Wow U</button>
+      <button class="btn ghost" id="btnInstallLogin" style="display:none">📲 Install Wow U on this phone</button>
     </div>
   </section>
 
@@ -156,6 +162,10 @@
       <button class="iconbtn" id="btnLogout" title="Sign out">⎋</button>
     </div>
     <div class="banner" id="modeBanner">connecting…</div>
+    <div id="installBar" class="installBar" style="display:none">
+      <span id="installText">📲 Add Wow U to your home screen</span>
+      <button class="installBtn" id="btnInstall">Install</button>
+    </div>
     <div class="body" id="chatList"></div>
     <button class="fab" id="fabNew">＋</button>
   </section>
@@ -536,11 +546,46 @@ $('#btnLogout').onclick = ()=>{
   localStorage.removeItem('wowu_me'); location.reload();
 };
 
+/* ---------------- Install to home screen ----------------
+   Android Chrome fires 'beforeinstallprompt' when the app is installable
+   (valid manifest + icons + service worker + https). We capture it and show
+   our own Install button. iPhone/Safari has no such event, so we show the
+   manual "Share -> Add to Home Screen" instruction instead. */
+let deferredPrompt = null;
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+function installAvailable(){ return !isStandalone && (!!deferredPrompt || isIOS); }
+function refreshInstallUI(){
+  const show = installAvailable();
+  $('#btnInstallLogin').style.display = show ? 'block' : 'none';
+  $('#installBar').style.display = show ? 'flex' : 'none';
+  if(isIOS && !deferredPrompt){
+    $('#installText').textContent = '📲 On iPhone: tap Share, then “Add to Home Screen”';
+    $('#btnInstall').style.display = 'none';
+    $('#btnInstallLogin').textContent = '📲 iPhone: Share → Add to Home Screen';
+  }
+}
+async function doInstall(){
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if(choice && choice.outcome==='accepted'){ refreshInstallUI(); }
+  } else if(isIOS){
+    showToast('Tap the Share button below, then “Add to Home Screen”');
+  }
+}
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt=e; refreshInstallUI(); });
+window.addEventListener('appinstalled', ()=>{ deferredPrompt=null; refreshInstallUI(); showToast('Wow U added to your home screen ✓'); });
+$('#btnInstall').onclick = doInstall;
+$('#btnInstallLogin').onclick = doInstall;
+
 /* ---------------- Auto-update ----------------
    The app checks a small version.json on the server. When I ship an improvement
    I bump this number; the app then shows a "tap to update" bar. Tapping clears the
    old cached files and reloads the newest version — no reinstalling, ever. */
-const APP_VERSION = 2;
+const APP_VERSION = 3;
 
 async function applyUpdate(){
   showToast('Updating…');
@@ -567,6 +612,7 @@ setInterval(()=>checkForUpdate(false), 60000);   // quietly check every minute
 /* PWA service worker (optional, ignored if file missing) */
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 
+refreshInstallUI();
 boot();
 </script>
 </body>
