@@ -106,6 +106,12 @@
   .invbtn.wa{background:#25d366; flex:2}
   .btn.pick{background:#efeaff; color:var(--purple); box-shadow:none; margin-top:0; margin-bottom:4px}
 
+  /* update pill */
+  .updatePill{position:absolute; top:0; left:0; right:0; z-index:60; cursor:pointer;
+    background:linear-gradient(135deg,var(--coral-deep),var(--purple)); color:#fff; text-align:center;
+    font-size:13.5px; font-weight:700; padding:9px 12px; padding-top:max(9px,env(safe-area-inset-top));
+    box-shadow:0 6px 18px rgba(0,0,0,.25)}
+
   /* toast */
   .toast{position:absolute; left:50%; top:64px; transform:translateX(-50%) translateY(-12px);
     background:var(--ink); color:#fff; font-size:13.5px; padding:11px 16px; border-radius:14px; max-width:88%;
@@ -116,6 +122,8 @@
 </head>
 <body>
 <div id="app">
+
+  <div id="updatePill" class="updatePill" style="display:none">✨ New version ready — tap to update</div>
 
   <!-- LOGIN -->
   <section id="loginScreen" class="screen active">
@@ -144,6 +152,7 @@
         <div class="sub" id="meSub">your circle</div>
       </div>
       <div class="spacer"></div>
+      <button class="iconbtn" id="btnUpdate" title="Check for updates">⟳</button>
       <button class="iconbtn" id="btnLogout" title="Sign out">⎋</button>
     </div>
     <div class="banner" id="modeBanner">connecting…</div>
@@ -526,6 +535,34 @@ $('#btnLogout').onclick = ()=>{
   if(!confirm('Sign out of Wow U?')) return;
   localStorage.removeItem('wowu_me'); location.reload();
 };
+
+/* ---------------- Auto-update ----------------
+   The app checks a small version.json on the server. When I ship an improvement
+   I bump this number; the app then shows a "tap to update" bar. Tapping clears the
+   old cached files and reloads the newest version — no reinstalling, ever. */
+const APP_VERSION = 2;
+
+async function applyUpdate(){
+  showToast('Updating…');
+  try{
+    if('serviceWorker' in navigator){ const rs=await navigator.serviceWorker.getRegistrations(); for(const r of rs) await r.unregister(); }
+    if('caches' in window){ const ks=await caches.keys(); for(const k of ks) await caches.delete(k); }
+  }catch(e){}
+  location.reload(true);
+}
+async function checkForUpdate(manual){
+  try{
+    const r = await fetch('version.json?t='+Date.now(), {cache:'no-store'});
+    const d = await r.json();
+    if(d && d.version > APP_VERSION){ $('#updatePill').style.display='block'; return true; }
+    if(manual) showToast('You’re on the latest version ✓');
+    return false;
+  }catch(e){ if(manual) showToast('Couldn’t check right now — try again'); return false; }
+}
+$('#updatePill').onclick = applyUpdate;
+$('#btnUpdate').onclick = ()=>checkForUpdate(true);
+checkForUpdate(false);
+setInterval(()=>checkForUpdate(false), 60000);   // quietly check every minute
 
 /* PWA service worker (optional, ignored if file missing) */
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
