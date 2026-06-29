@@ -110,6 +110,9 @@
   .installBar{display:flex; align-items:center; gap:10px; padding:11px 14px; background:#eafaf3; border-bottom:1px solid #c7ecdb}
   .installBar #installText{flex:1; font-size:13px; color:#11724e; font-weight:600; line-height:1.35}
   .installBtn{flex:0 0 auto; padding:9px 18px; border:none; border-radius:10px; font-size:14px; font-weight:700; color:#fff; background:#1aa86f; cursor:pointer}
+  .alertsBar{background:#fff4e6; border-color:#f0dcc0}
+  .alertsBar #alertsText{flex:1; font-size:13px; color:#8a5a00; font-weight:600; line-height:1.35}
+  .alertsBar .installBtn{background:#e8890b}
 
   /* update pill */
   .updatePill{position:absolute; top:0; left:0; right:0; z-index:60; cursor:pointer;
@@ -165,6 +168,10 @@
     <div id="installBar" class="installBar" style="display:none">
       <span id="installText">📲 Add Wow U to your home screen</span>
       <button class="installBtn" id="btnInstall">Install</button>
+    </div>
+    <div id="alertsBar" class="installBar alertsBar" style="display:none">
+      <span id="alertsText">🔔 Turn on alerts so you hear new messages</span>
+      <button class="installBtn" id="btnAlerts">Turn on</button>
     </div>
     <div class="body" id="chatList"></div>
     <button class="fab" id="fabNew">＋</button>
@@ -329,18 +336,26 @@ let readTs = {};        // last time I opened each chat (for unread dots)
 let firstChatLoad = true;
 let audioCtx = null;
 
+function tone(freq, start, dur){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.type='sine'; o.frequency.value=freq;
+  g.gain.setValueAtTime(0.001, audioCtx.currentTime+start);
+  g.gain.exponentialRampToValueAtTime(0.4, audioCtx.currentTime+start+0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+start+dur);
+  o.start(audioCtx.currentTime+start); o.stop(audioCtx.currentTime+start+dur+0.02);
+}
 function beep(){
   try{
     audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
-    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-    o.connect(g); g.connect(audioCtx.destination);
-    o.type='sine'; o.frequency.value=880;
-    g.gain.setValueAtTime(0.001, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime+0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.35);
-    o.start(); o.stop(audioCtx.currentTime+0.36);
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    tone(784, 0, 0.18); tone(1047, 0.16, 0.30);   // two-note "ding-dong"
   }catch(e){}
 }
+// Keep audio unlocked: any tap resumes the sound engine (mobile blocks audio until a gesture).
+['pointerdown','touchstart','click'].forEach(ev=>window.addEventListener(ev, ()=>{
+  try{ audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); }catch(e){}
+}, {passive:true}));
 function askNotifyPermission(){
   try{ if('Notification' in window && Notification.permission==='default'){ Notification.requestPermission(); } }catch(e){}
 }
@@ -357,7 +372,7 @@ function alertIncoming(name, text){
       n.onclick=()=>{ window.focus(); n.close(); };
     }
   }catch(e){}
-  if(navigator.vibrate){ try{ navigator.vibrate(180); }catch(e){} }
+  if(navigator.vibrate){ try{ navigator.vibrate([220,120,220]); }catch(e){} }
 }
 
 /* ---------------- App logic ---------------- */
@@ -394,9 +409,24 @@ function enterApp(){
   $('#meAvatar').textContent = initials(ME.name);
   $('#meSub').textContent = ME.cc+' '+ME.phone;
   show('home');
+  refreshInstallUI();
+  refreshAlertsUI();
   if(unsubChats) unsubChats();
   unsubChats = backend.listenChats(ME.key, renderChatList);
 }
+
+function refreshAlertsUI(){
+  if(!('Notification' in window)){ $('#alertsBar').style.display='none'; return; }
+  const need = Notification.permission !== 'granted';
+  $('#alertsBar').style.display = need ? 'flex' : 'none';
+  if(Notification.permission === 'denied'){
+    $('#alertsText').textContent = '🔔 Alerts are blocked — turn on notifications for Wow U in your browser/site settings';
+    $('#btnAlerts').style.display = 'none';
+  }
+}
+$('#btnAlerts').onclick = async ()=>{
+  try{ const p = await Notification.requestPermission(); refreshAlertsUI(); if(p==='granted') showToast('Alerts are on ✓'); }catch(e){}
+};
 
 function renderChatList(map){
   map = map || {};
@@ -585,7 +615,7 @@ $('#btnInstallLogin').onclick = doInstall;
    The app checks a small version.json on the server. When I ship an improvement
    I bump this number; the app then shows a "tap to update" bar. Tapping clears the
    old cached files and reloads the newest version — no reinstalling, ever. */
-const APP_VERSION = 3;
+const APP_VERSION = 4;
 
 async function applyUpdate(){
   showToast('Updating…');
